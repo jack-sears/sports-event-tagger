@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sports Events Tagger</title>
+    <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+    <header class="app-header">
+        <div class="header-content">
+            <h1>⚽🏒🏀 Sports Events Tagger</h1>
+        </div>
+    </header>
+
+    <div class="main-container">dsfa
+        <!-- Left: Video Section -->
+        <section class="video-section">
+            <div class="card">
+                <div class="card-header">
+                    <h2>Video Player</h2>
+                    <label for="videoUpload" class="upload-btn">
+                        <span>📁 Upload Video</span>
+                        <input type="file" id="videoUpload" accept="video/mp4,video/quicktime" />
+                    </label>
+                </div>
+                <div class="video-wrapper">
+                    <video id="gameVideo" controls></video>
+                </div>
+                <div class="video-controls-hint">
+                    <small>⌨️ Keyboard: Space (play/pause) | ← → (skip 5s) | Shift + ← → (skip 10s)</small>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h2>Tagged Events</h2>
+                    <span class="event-count" id="eventCount">0 events</span>
+                </div>
+                <div class="event-table-container">
+                    <table id="eventTable">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Player</th>
+                                <th>Event</th>
+                                <th>Start</th>
+                                <th>End</th>
+                                <th>Outcome</th>
+                                <th>Possession</th>
+                                <th>Body Part</th>
+                                <th>Time</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Rows get added here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- Right: Tagging Controls -->
+        <section class="tagging-section">
+            <div class="card">
+                <div class="card-header">
+                    <h2>Team Lineup</h2>
+                    <button id="openLineupModal" class="icon-btn">✏️ Edit</button>
+                </div>
+                <div class="player-selection">
+                    <div id="playerButtons" class="player-buttons-grid"></div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="controls-header">
+                    <button id="openEventEditModal" class="icon-btn">✏️ Edit Buttons</button>
+                </div>
+                <div class="controls" id="controlsContainer">
+                    <!-- Control groups will be dynamically generated here -->
+                    <div class="action-buttons">
+                        <button id="addEvent" class="btn-primary">
+                            <span>➕</span> Add Event
+                        </button>
+                        <button id="exportCSV" class="btn-secondary">
+                            <span>💾</span> Export CSV
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="pitch-section">
+                    <div class="pitch-controls-left">
+                        <div class="sport-selector-container">
+                            <label for="sportSelect" class="sport-label">Sport:</label>
+                            <select id="sportSelect" class="sport-select">
+                                <option value="soccer">Soccer</option>
+                                <option value="hockey">Hockey</option>
+                                <option value="basketball">Basketball</option>
+                            </select>
+                        </div>
+                        <div id="coordsDisplay" class="coords-display">X: –, Y: –</div>
+                    </div>
+                    <canvas id="pitchCanvas" width="600" height="400"></canvas>
+                </div>
+                <div class="pitch-instructions">
+                    <small>Click on the field/court to mark event locations. For Pass/Shot: click start, then end. For Tackle/Error: single click.</small>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- Event Button Edit Modal -->
+    <div id="eventEditModal" class="modal">
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header">
+                <h2>Edit Event Tagging Buttons</h2>
+                <span class="close close-event-modal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="category-management-section">
+                    <h3 style="margin-bottom: 0.75rem; font-size: 1rem;">Manage Categories</h3>
+                    <div id="categoryList" class="category-list"></div>
+                    <button id="addCategoryBtn" class="add-item-btn" style="margin-top: 0.5rem;">+ Add Category</button>
+                </div>
+                <div style="border-top: 2px solid var(--border-color); margin: 1rem 0; padding-top: 1rem;">
+                    <div id="buttonEditTabs" class="edit-tabs"></div>
+                    <div id="buttonEditContent" class="edit-content"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="saveEventButtons" class="btn-primary">Save Changes</button>
+                <button class="btn-secondary close-event-modal">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Lineup Modal -->
+    <div id="lineupModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Edit Team Lineup</h2>
+                <span class="close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <p class="modal-description">Enter player names or numbers (up to 18 players)</p>
+                <div id="lineupInputs" class="lineup-inputs"></div>
+            </div>
+            <div class="modal-footer">
+                <button id="saveLineup" class="btn-primary">Save Lineup</button>
+                <button class="btn-secondary close-modal">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
