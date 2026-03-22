@@ -3,10 +3,6 @@ const video = document.getElementById("gameVideo");
 const videoUpload = document.getElementById("videoUpload");
 const canvas = document.getElementById("pitchCanvas");
 const ctx = canvas.getContext("2d");
-const playerInput = document.getElementById("playerInput"); // May be null if removed from DOM
-const exportBtn = document.getElementById("exportCSV");
-const addEventBtn = document.getElementById("addEvent");
-const playerList = document.getElementById("playerList");
 const eventTableBody = document.querySelector("#eventTable tbody");
 const eventCount = document.getElementById("eventCount");
 
@@ -27,6 +23,10 @@ let selectedEvent = null;
 let selectedOutcome = null;
 let selectedPossession = "";
 let selectedBodyPart = "";
+/** Values for user-defined categories (keys match categoryConfig keys) */
+let extraCategorySelections = {};
+
+let previousVideoObjectUrl = null;
 
 let currentSport = localStorage.getItem("selectedSport") || "soccer";
 
@@ -65,8 +65,38 @@ const defaultButtonConfig = {
   bodypart: ["", "Head"]
 };
 
-let categoryConfig = JSON.parse(localStorage.getItem("categoryConfig")) || defaultCategoryConfig;
-let buttonConfig = JSON.parse(localStorage.getItem("buttonConfig")) || defaultButtonConfig;
+function loadJsonFromStorage(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw);
+    return parsed !== null && typeof parsed === "object" ? parsed : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function escapeHtmlAttr(str) {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/'/g, "&#39;");
+}
+
+let categoryConfig = loadJsonFromStorage("categoryConfig", defaultCategoryConfig);
+let buttonConfig = loadJsonFromStorage("buttonConfig", defaultButtonConfig);
+if (!Array.isArray(categoryConfig)) categoryConfig = [...defaultCategoryConfig];
+if (!buttonConfig || typeof buttonConfig !== "object" || Array.isArray(buttonConfig)) {
+  buttonConfig = { ...defaultButtonConfig };
+}
 
 // Ensure all categories in config have button arrays
 categoryConfig.forEach(cat => {
@@ -78,7 +108,6 @@ categoryConfig.forEach(cat => {
 // Event Edit Modal
 const openEventEditModalBtn = document.getElementById("openEventEditModal");
 const eventEditModal = document.getElementById("eventEditModal");
-const closeEventModal = eventEditModal.querySelector(".close-event-modal");
 const saveEventButtonsBtn = document.getElementById("saveEventButtons");
 const buttonEditContent = document.getElementById("buttonEditContent");
 const buttonEditTabs = document.getElementById("buttonEditTabs");
@@ -88,7 +117,12 @@ let currentEditTab = "event";
 videoUpload.addEventListener("change", (e) => {
   const file = e.target.files[0];
   if (file) {
-    video.src = URL.createObjectURL(file);
+    if (previousVideoObjectUrl) {
+      URL.revokeObjectURL(previousVideoObjectUrl);
+      previousVideoObjectUrl = null;
+    }
+    previousVideoObjectUrl = URL.createObjectURL(file);
+    video.src = previousVideoObjectUrl;
     // Show success feedback
     const uploadBtn = videoUpload.closest('.upload-btn');
     if (uploadBtn) {
@@ -102,15 +136,25 @@ videoUpload.addEventListener("change", (e) => {
 
 // --- Keyboard Controls ---
 document.addEventListener("keydown", (e) => {
-  // Don't interfere with input fields
-  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) {
+  const tag = e.target.tagName;
+  // Don't interfere with form controls or editable content
+  if (
+    tag === "INPUT" ||
+    tag === "TEXTAREA" ||
+    tag === "SELECT" ||
+    tag === "BUTTON" ||
+    e.target.isContentEditable
+  ) {
     return;
   }
 
   const skipAmount = e.shiftKey ? 10 : 5;
+  const duration = video.duration;
+  const maxTime = Number.isFinite(duration) ? duration : Infinity;
+
   if (e.code === "ArrowRight") {
     e.preventDefault();
-    video.currentTime = Math.min(video.duration, video.currentTime + skipAmount);
+    video.currentTime = Math.min(maxTime, video.currentTime + skipAmount);
   } else if (e.code === "ArrowLeft") {
     e.preventDefault();
     video.currentTime = Math.max(0, video.currentTime - skipAmount);
@@ -494,12 +538,12 @@ drawField();
 
 // --- Button Selection ---
 function setupButtons(className, callback) {
-  document.querySelectorAll(`.${className}`).forEach(btn => {
+  const selector = `.${CSS.escape(className)}`;
+  document.querySelectorAll(selector).forEach(btn => {
     btn.addEventListener("click", () => {
-      document.querySelectorAll(`.${className}`).forEach(b => b.classList.remove("active"));
+      document.querySelectorAll(selector).forEach(b => b.classList.remove("active"));
       btn.classList.add("active");
-      const dataKey = className.split("-")[0];
-      callback(btn.dataset[dataKey]);
+      callback(btn.dataset.tagValue ?? "");
     });
   });
 }
@@ -518,10 +562,13 @@ function renderButtons(type, containerId) {
     possession: "possession-btn",
     bodypart: "bodypart-btn"
   };
-  
+  const btnClass =
+    classMap[type] || `tag-cat-${String(type).replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+
   buttons.forEach(value => {
     const btn = document.createElement("button");
-    btn.className = classMap[type];
+    btn.className = btnClass;
+    btn.dataset.tagValue = value ?? "";
     
     // Set display text
     let displayText = value;
@@ -540,11 +587,7 @@ function renderButtons(type, containerId) {
     }
     
     btn.textContent = displayText;
-    
-    // Set data attribute (use empty string for default values)
-    const dataKey = type === "event" ? "event" : type === "outcome" ? "outcome" : type === "possession" ? "possession" : "bodypart";
-    btn.dataset[dataKey] = value || "";
-    
+
     // Add special classes for outcome buttons
     if (type === "outcome") {
       if (value === "Success") btn.classList.add("success");
@@ -555,7 +598,7 @@ function renderButtons(type, containerId) {
   });
   
   // Setup button listeners
-  setupButtons(classMap[type], val => {
+  setupButtons(btnClass, val => {
     if (type === "event") {
       selectedEvent = val;
       if (tempEvent) {
@@ -568,6 +611,8 @@ function renderButtons(type, containerId) {
       selectedPossession = val;
     } else if (type === "bodypart") {
       selectedBodyPart = val;
+    } else {
+      extraCategorySelections[type] = val;
     }
   });
 }
@@ -647,20 +692,21 @@ function setupAddEventListener() {
       return;
     }
 
-    const player = (playerInput && playerInput.value.trim()) || window.selectedPlayer || "Unknown";
-    
+    const player = (window.selectedPlayer && String(window.selectedPlayer).trim()) || "Unknown";
+
     const event = {
       eventType: selectedEvent || tempEvent.type,
       player,
       startX: tempEvent.startX,
       startY: tempEvent.startY,
-      endX: tempEvent.endX || "",
-      endY: tempEvent.endY || "",
+      endX: tempEvent.endX ?? "",
+      endY: tempEvent.endY ?? "",
       time: tempEvent.time,
       outcome: selectedOutcome || "",
       possession: selectedPossession || "",
       bodypart: selectedBodyPart || ""
     };
+    Object.assign(event, extraCategorySelections);
 
     events.push(event);
     addRowToTable(event, events.length - 1);
@@ -671,9 +717,6 @@ function setupAddEventListener() {
     clearTempMarkers();
     clearSelections();
     
-    if (playerInput) {
-      playerInput.value = "";
-    }
     window.selectedPlayer = null;
     showNotification("Event added successfully!", "success");
   });
@@ -690,24 +733,51 @@ function setupExportListener() {
       return;
     }
 
-    const header = ["eventType","player","startX","startY","endX","endY","time","outcome","possession","bodypart"];
-    const rows = events.map(ev => 
-      header.map(h => {
-        const value = ev[h] !== undefined ? ev[h] : "";
-        // Escape commas and quotes in CSV
-        if (typeof value === 'string' && (value.includes(',') || value.includes('"') || value.includes('\n'))) {
-          return `"${value.replace(/"/g, '""')}"`;
-        }
-        return value;
-      }).join(",")
+    const BASE_KEYS = [
+      "eventType",
+      "player",
+      "startX",
+      "startY",
+      "endX",
+      "endY",
+      "time",
+      "outcome",
+      "possession",
+      "bodypart"
+    ];
+    const extraKeys = new Set();
+    events.forEach(ev => {
+      Object.keys(ev).forEach(k => {
+        if (!BASE_KEYS.includes(k)) extraKeys.add(k);
+      });
+    });
+    const header = [...BASE_KEYS, ...[...extraKeys].sort()];
+
+    const rows = events.map(ev =>
+      header
+        .map(h => {
+          const value = ev[h] !== undefined && ev[h] !== null ? ev[h] : "";
+          // Escape commas and quotes in CSV
+          if (
+            typeof value === "string" &&
+            (value.includes(",") || value.includes('"') || value.includes("\n"))
+          ) {
+            return `"${value.replace(/"/g, '""')}"`;
+          }
+          return value;
+        })
+        .join(",")
     );
     const csv = [header.join(","), ...rows].join("\n");
 
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = `soccer-events-${new Date().toISOString().split('T')[0]}.csv`;
+    const csvUrl = URL.createObjectURL(blob);
+    link.href = csvUrl;
+    const sportSlug = currentSport.replace(/[^a-zA-Z0-9_-]/g, "") || "events";
+    link.download = `${sportSlug}-events-${new Date().toISOString().split("T")[0]}.csv`;
     link.click();
+    URL.revokeObjectURL(csvUrl);
     
     showNotification("CSV exported successfully!", "success");
   });
@@ -843,6 +913,7 @@ function clearSelections() {
   selectedEvent = null;
   selectedOutcome = null;
   selectedPossession = "";
+  extraCategorySelections = {};
 }
 
 // --- Add Row to Table ---
@@ -854,7 +925,7 @@ function addRowToTable(event, index) {
     <td contenteditable="true">${event.player}</td>
     <td contenteditable="true">${event.eventType}</td>
     <td contenteditable="true">${event.startX.toFixed(1)},${event.startY.toFixed(1)}</td>
-    <td contenteditable="true">${event.endX ? event.endX.toFixed(1) + "," + event.endY.toFixed(1) : ""}</td>
+    <td contenteditable="true">${typeof event.endX === "number" && typeof event.endY === "number" ? event.endX.toFixed(1) + "," + event.endY.toFixed(1) : ""}</td>
     <td contenteditable="true">${event.outcome}</td>
     <td contenteditable="true">${event.possession}</td>
     <td contenteditable="true">${event.bodypart}</td>
@@ -871,32 +942,48 @@ function addRowToTable(event, index) {
   });
 
   // Update events array on edit
+  // contenteditable cells only: player, eventType, start, end, outcome, possession, bodypart
   tr.querySelectorAll("td[contenteditable]").forEach((cell, i) => {
     cell.addEventListener("blur", () => {
-      switch(i) {
-        case 0: break;
-        case 1: event.player = cell.textContent.trim(); break;
-        case 2: event.eventType = cell.textContent.trim(); break;
-        case 3: 
+      switch (i) {
+        case 0:
+          event.player = cell.textContent.trim();
+          break;
+        case 1:
+          event.eventType = cell.textContent.trim();
+          break;
+        case 2: {
           const [sx, sy] = cell.textContent.split(",");
           if (sx && sy) {
             event.startX = parseFloat(sx.trim()) || event.startX;
             event.startY = parseFloat(sy.trim()) || event.startY;
           }
           break;
-        case 4:
+        }
+        case 3: {
           const [ex, ey] = cell.textContent.split(",");
           if (ex && ey) {
-            event.endX = parseFloat(ex.trim()) || "";
-            event.endY = parseFloat(ey.trim()) || "";
+            const px = parseFloat(ex.trim());
+            const py = parseFloat(ey.trim());
+            event.endX = Number.isFinite(px) ? px : "";
+            event.endY = Number.isFinite(py) ? py : "";
           } else {
             event.endX = "";
             event.endY = "";
           }
           break;
-        case 5: event.outcome = cell.textContent.trim(); break;
-        case 6: event.possession = cell.textContent.trim(); break;
-        case 7: event.bodypart = cell.textContent.trim(); break;
+        }
+        case 4:
+          event.outcome = cell.textContent.trim();
+          break;
+        case 5:
+          event.possession = cell.textContent.trim();
+          break;
+        case 6:
+          event.bodypart = cell.textContent.trim();
+          break;
+        default:
+          break;
       }
     });
   });
@@ -952,16 +1039,6 @@ saveLineupBtn.addEventListener("click", () => {
     if (input.value.trim() !== "") lineup.push(input.value.trim());
   });
 
-  // Update datalist if it exists
-  if (playerList) {
-    playerList.innerHTML = "";
-    lineup.forEach(player => {
-      const option = document.createElement("option");
-      option.value = player;
-      playerList.appendChild(option);
-    });
-  }
-
   // Render player buttons
   renderPlayerButtons();
 
@@ -983,15 +1060,8 @@ function renderPlayerButtons() {
     btn.textContent = player;
     btn.className = "player-btn";
     btn.addEventListener("click", () => {
-      if (playerInput) {
-        playerInput.value = player;
-        highlightActiveButton(player);
-        playerInput.focus();
-      } else {
-        // Store selected player for event creation
-        window.selectedPlayer = player;
-        highlightActiveButton(player);
-      }
+      window.selectedPlayer = player;
+      highlightActiveButton(player);
     });
     playerButtonsContainer.appendChild(btn);
   });
@@ -1124,8 +1194,8 @@ function renderCategoryList() {
     const item = document.createElement("div");
     item.className = "button-edit-item";
     item.innerHTML = `
-      <input type="text" value="${cat.label}" data-index="${index}" placeholder="Category name" class="category-label-input" />
-      <button class="delete-item-btn" data-index="${index}">Delete</button>
+      <input type="text" value="${escapeHtmlAttr(cat.label)}" data-index="${index}" placeholder="Category name" class="category-label-input" />
+      <button type="button" class="delete-item-btn" data-index="${index}">Delete</button>
     `;
     categoryList.appendChild(item);
   });
@@ -1196,20 +1266,25 @@ function renderEditTab(tabType) {
   const category = categoryConfig.find(cat => cat.key === tabType);
   const displayName = category ? category.label : tabType;
   
-  let html = `<h3 style="margin-bottom: 1rem; font-size: 1rem;">${displayName} Buttons</h3>`;
-  
+  let html = `<h3 style="margin-bottom: 1rem; font-size: 1rem;">${escapeHtml(displayName)} Buttons</h3>`;
+
   buttons.forEach((value, index) => {
     html += `
       <div class="button-edit-item">
-        <input type="text" value="${value || ''}" data-index="${index}" placeholder="Button label" />
-        <button class="delete-item-btn" data-index="${index}">Delete</button>
+        <input type="text" value="${escapeHtmlAttr(value || "")}" data-index="${index}" placeholder="Button label" />
+        <button type="button" class="delete-item-btn" data-index="${index}">Delete</button>
       </div>
     `;
   });
-  
-  html += `<button class="add-item-btn" onclick="addButtonItem('${tabType}')">+ Add Button</button>`;
-  
+
   buttonEditContent.innerHTML = html;
+
+  const addBtn = document.createElement("button");
+  addBtn.type = "button";
+  addBtn.className = "add-item-btn";
+  addBtn.textContent = "+ Add Button";
+  addBtn.addEventListener("click", () => addButtonItem(tabType));
+  buttonEditContent.appendChild(addBtn);
   
   // Setup delete buttons
   buttonEditContent.querySelectorAll(".delete-item-btn").forEach(btn => {
@@ -1236,9 +1311,6 @@ function addButtonItem(tabType) {
   buttonConfig[tabType].push("");
   renderEditTab(tabType);
 }
-
-// Make addButtonItem globally accessible
-window.addButtonItem = addButtonItem;
 
 // Add Category Button
 const addCategoryBtn = document.getElementById("addCategoryBtn");
@@ -1279,12 +1351,6 @@ if (openEventEditModalBtn) {
   });
 }
 
-if (closeEventModal) {
-  closeEventModal.addEventListener("click", () => {
-    eventEditModal.style.display = "none";
-  });
-}
-
 if (eventEditModal) {
   eventEditModal.querySelectorAll(".close-event-modal").forEach(btn => {
     btn.addEventListener("click", () => {
@@ -1293,7 +1359,7 @@ if (eventEditModal) {
   });
 
   window.addEventListener("click", e => {
-    if (e.target == eventEditModal) eventEditModal.style.display = "none";
+    if (e.target === eventEditModal) eventEditModal.style.display = "none";
   });
 }
 
